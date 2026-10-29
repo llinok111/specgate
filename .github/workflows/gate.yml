@@ -1,0 +1,102 @@
+name: Spec gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "src/specify_cli/gate/**"
+      - "src/specify_cli/command_gate.py"
+      - "tests/specify_cli/gate/**"
+      - ".github/workflows/gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: gate (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+          python -m pip install "ruff==0.15.19"
+
+      - name: Lint
+        run: |
+          ruff check src/specify_cli/gate src/specify_cli/command_gate.py tests/specify_cli/gate
+          ruff format --check src/specify_cli/gate src/specify_cli/command_gate.py tests/specify_cli/gate
+
+      - name: Unit and CLI tests
+        run: python -m pytest tests/specify_cli/gate -q
+
+      - name: Upstream CLI surface still intact
+        run: python -m pytest tests/specify_cli/test_command_init.py -q
+
+      - name: Gate is deterministic and self-consistent
+        shell: bash
+        run: |
+          mkdir -p /tmp/gate-demo/specs/001-demo
+          cat > /tmp/gate-demo/specs/001-demo/spec.md <<'MD'
+          # Spec
+
+          ## Requirements
+
+          ### Functional Requirements
+
+          - **FR-001**: System MUST work.
+          - **FR-002**: System MUST be tested.
+
+          ## Success Criteria
+
+          - **SC-001**: Zero defects.
+          MD
+          cat > /tmp/gate-demo/specs/001-demo/plan.md <<'MD'
+          # Plan
+
+          FR-001 and FR-002 live in src/main.py.
+          MD
+          cat > /tmp/gate-demo/specs/001-demo/tasks.md <<'MD'
+          # Tasks
+
+          ## Phase 1: Setup
+
+          - [ ] T001 Implement `src/main.py` (FR-001)
+          MD
+          set +e
+          specify gate check /tmp/gate-demo --format json > /tmp/run1.json
+          code1=$?
+          specify gate check /tmp/gate-demo --format json > /tmp/run2.json
+          code2=$?
+          set -e
+          test "$code1" = "$code2"
+          diff /tmp/run1.json /tmp/run2.json
+          # FR-002 is declared but no task mentions it -> exit code 1
+          test "$code1" = "1"
+          grep -q "SG003" /tmp/run1.json
+
+      - name: Baseline accepts today and fails on new findings
+        shell: bash
+        run: |
+          specify gate check /tmp/gate-demo --baseline /tmp/gate-demo/baseline.json --update-baseline
+          specify gate check /tmp/gate-demo --baseline /tmp/gate-demo/baseline.json
+          printf '\n- **FR-003**: System MUST also fail loudly.\n' >> /tmp/gate-demo/specs/001-demo/spec.md
+          set +e
+          specify gate check /tmp/gate-demo --baseline /tmp/gate-demo/baseline.json
+          code=$?
+          set -e
+          test "$code" = "1"

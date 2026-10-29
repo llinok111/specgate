@@ -231,6 +231,22 @@ the whole process.
 - [Project history](https://github.github.io/spec-kit/history.html)
 - [How Spec Kit uses Spec Kit](./CONTRIBUTING.md#does-spec-kit-use-spec-kit)
 
+### Deterministic gate (`specify gate`)
+
+`/analyze` asks a model to compare `spec.md`, `plan.md` and `tasks.md`, so the
+same commit can report differently on every run. This fork adds `specify gate`,
+which performs the mechanical half of that comparison deterministically — id
+duplicates, dangling references, requirement coverage, story mapping, tasks
+marked done whose files are absent — with a stable exit code and a baseline so
+CI fails only on *new* findings:
+
+```bash
+specify gate --baseline .specify/gate-baseline.json
+```
+
+Rule table, coverage semantics, measured precision on 274 real feature
+directories and known limitations: [`src/specify_cli/gate/README.md`](./src/specify_cli/gate/README.md).
+
 ## In the news
 
 - [Open Source Friday: Spec Kit Part 2](https://www.youtube.com/watch?v=8hHCpNVLhmI) (October 16, 2026) — Manfred Riem and Nicole Haugen discuss Spec Kit 1.0 and the expanded toolkit.
